@@ -63,6 +63,8 @@ jobs:
                          --ks-key-alias "$KEY_ALIAS" \
                          --ks-pass pass:"$KEYSTORE_PASSWORD" \
                          --key-pass pass:"$KEY_PASSWORD" \
+                         --v1-signing-enabled true \
+                         --v2-signing-enabled true \
                          --out android/app/build/outputs/apk/release/app-$arch-release-signed.apk \
                          android/app/build/outputs/apk/release/app-$arch-release-unsigned.apk
         done
