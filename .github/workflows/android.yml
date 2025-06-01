@@ -1,6 +1,5 @@
 name: android
 
-# build on c/cpp changes or workflow changes
 on:
   push:
     paths:
@@ -34,43 +33,80 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v4
-    - name: Install deps
+
+    - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y --no-install-recommends gettext
+        sudo apt-get install -y --no-install-recommends gettext zipalign apksigner
+
     - name: Set up JDK 17
       uses: actions/setup-java@v4
       with:
-          distribution: 'temurin'
-          java-version: '17'
+        distribution: 'temurin'
+        java-version: '17'
+
     - name: Build AAB with Gradle
-      # We build an AAB as well for uploading to the the Play Store.
       run: cd android; ./gradlew bundlerelease
+
     - name: Build APKs with Gradle
-      # "assemblerelease" is very fast after "bundlerelease".
       run: cd android; ./gradlew assemblerelease
+
+    - name: Decode keystore
+      run: echo "$KEYSTORE_BASE64" | base64 -d > voxelcraft-key.jks
+      env:
+        KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+
+    - name: Sign APKs
+      run: |
+        for arch in armeabi-v7a arm64-v8a x86 x86_64; do
+          apksigner sign --ks voxelcraft-key.jks \
+                         --ks-key-alias "$KEY_ALIAS" \
+                         --ks-pass pass:"$KEYSTORE_PASSWORD" \
+                         --key-pass pass:"$KEY_PASSWORD" \
+                         --out android/app/build/outputs/apk/release/app-$arch-release-signed.apk \
+                         android/app/build/outputs/apk/release/app-$arch-release-unsigned.apk
+        done
+      env:
+        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+    - name: Align APKs (optional but recommended)
+      run: |
+        for arch in armeabi-v7a arm64-v8a x86 x86_64; do
+          zipalign -v 4 \
+            android/app/build/outputs/apk/release/app-$arch-release-signed.apk \
+            android/app/build/outputs/apk/release/app-$arch-release-aligned.apk
+          mv android/app/build/outputs/apk/release/app-$arch-release-aligned.apk \
+             android/app/build/outputs/apk/release/app-$arch-release-signed.apk
+        done
+
     - name: Save AAB artifact
       uses: actions/upload-artifact@v4
       with:
         name: Luanti-release.aab
         path: android/app/build/outputs/bundle/release/app-release.aab
-    - name: Save armeabi artifact
+
+    - name: Save signed armeabi artifact
       uses: actions/upload-artifact@v4
       with:
         name: Luanti-armeabi-v7a.apk
-        path: android/app/build/outputs/apk/release/app-armeabi-v7a-release-unsigned.apk
-    - name: Save arm64 artifact
+        path: android/app/build/outputs/apk/release/app-armeabi-v7a-release-signed.apk
+
+    - name: Save signed arm64 artifact
       uses: actions/upload-artifact@v4
       with:
         name: Luanti-arm64-v8a.apk
-        path: android/app/build/outputs/apk/release/app-arm64-v8a-release-unsigned.apk
-    - name: Save x86 artifact
+        path: android/app/build/outputs/apk/release/app-arm64-v8a-release-signed.apk
+
+    - name: Save signed x86 artifact
       uses: actions/upload-artifact@v4
       with:
         name: Luanti-x86.apk
-        path: android/app/build/outputs/apk/release/app-x86-release-unsigned.apk
-    - name: Save x86_64 artifact
+        path: android/app/build/outputs/apk/release/app-x86-release-signed.apk
+
+    - name: Save signed x86_64 artifact
       uses: actions/upload-artifact@v4
       with:
         name: Luanti-x86_64.apk
-        path: android/app/build/outputs/apk/release/app-x86_64-release-unsigned.apk
+        path: android/app/build/outputs/apk/release/app-x86_64-release-signed.apk
